@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# Default file patterns (customizable via env var or args)
+DEFAULT_PATTERNS="*.ts *.tsx *.js *.jsx"
+PATTERNS="${FILE_PATTERNS:-$DEFAULT_PATTERNS}"
+
+# Default exclusions (extendable)
+EXCLUDE_PATHS=(
+    "*/node_modules/*"
+    "*/.next/*"
+    "*/dist/*"
+    "*/build/*"
+    "*/.git/*"
+)
+
+# Usage message
+usage() {
+    echo "Usage: $0 <search-term> [directory] [--patterns \"pattern1 pattern2\"]"
+    echo "Example: $0 \"actions/companies/companies\" ./my-project"
+    echo "         $0 \"utils/helpers\" --patterns \"*.py *.sh\""
+    echo "Set FILE_PATTERNS env var to override defaults: $DEFAULT_PATTERNS"
+    exit 1
+}
+
+# Check for search term
+if [ -z "$1" ]; then
+    usage
+fi
+
+SEARCH_TERM="$1"
+shift
+
+# Default to current directory if none provided
+SEARCH_DIR="."
+if [ -n "$1" ] && [ "$1" != "--patterns" ]; then
+    SEARCH_DIR="$1"
+    shift
+fi
+
+# Handle custom patterns via --patterns flag
+if [ "$1" = "--patterns" ] && [ -n "$2" ]; then
+    PATTERNS="$2"
+    shift 2
+fi
+
+# Build find command dynamically
+FIND_CMD="find \"$SEARCH_DIR\" -type f"
+for EXCLUDE in "${EXCLUDE_PATHS[@]}"; do
+    FIND_CMD="$FIND_CMD -not -path \"$EXCLUDE\""
+done
+
+# Convert patterns to -name clauses
+PATTERN_CMD=""
+for PATTERN in $PATTERNS; do
+    if [ -z "$PATTERN_CMD" ]; then
+        PATTERN_CMD="-name \"$PATTERN\""
+    else
+        PATTERN_CMD="$PATTERN_CMD -o -name \"$PATTERN\""
+    fi
+done
+FIND_CMD="$FIND_CMD \( $PATTERN_CMD \) -exec grep -l \"$SEARCH_TERM\" {} + 2>/dev/null"
+
+# Execute
+eval "$FIND_CMD"
