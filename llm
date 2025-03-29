@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Supported LLM providers
-SUPPORTED_LLMS="chatgpt grok deepseek claude gemini ollama"
+SUPPORTED_LLMS="chatgpt claude gemini deepseek mistral grok ollama openrouter"
 
 # Get the directory of the script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -218,16 +218,16 @@ case "$LLM" in
     ;;
 
   "mistral")
-    check_var "$OPENROUTER_KEY" "OPENROUTER_KEY"
-    check_var "$OPENROUTER_MAX_TOKENS" "OPENROUTER_MAX_TOKENS"
-    check_var "$OPENROUTER_API_URL" "OPENROUTER_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$OPENROUTER_MAX_TOKENS}"
+    check_var "$MISTRAL_KEY" "MISTRAL_KEY"
+    check_var "$MISTRAL_MAX_TOKENS" "MISTRAL_MAX_TOKENS"
+    check_var "$MISTRAL_API_URL" "MISTRAL_API_URL"
+    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$MISTRAL_MAX_TOKENS}"
     DATA=$(jq -n \
-      --arg model "${MODEL:-mistral/mistral-7b-instruct}" \
+      --arg model "$MODEL" \
       --arg content "$PROMPT" \
       --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
       '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
-    call_api "$OPENROUTER_API_URL" "$OPENROUTER_KEY" "$DATA" '.choices[0].message.content'
+    call_api "$MISTRAL_API_URL" "$MISTRAL_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
   "ollama")
