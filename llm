@@ -167,16 +167,17 @@ case "$LLM" in
     call_api "$CHATGPT_API_URL" "$OPENAI_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
-  "grok")
+    "grok")
     check_var "$XAI_KEY" "XAI_KEY"
     check_var "$GROK_MAX_TOKENS" "GROK_MAX_TOKENS"
     check_var "$GROK_API_URL" "GROK_API_URL"
     EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$GROK_MAX_TOKENS}"
     DATA=$(jq -n \
-      --arg prompt "$PROMPT" \
+      --arg model "$MODEL" \
+      --arg content "$PROMPT" \
       --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"prompt": $prompt, "max_tokens": $max_tokens}')
-    call_api "$GROK_API_URL" "$XAI_KEY" "$DATA" '.choices[0].text'
+      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+    call_api "$GROK_API_URL" "$XAI_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
   "deepseek")
