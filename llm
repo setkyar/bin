@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Supported LLM providers
-SUPPORTED_LLMS="chatgpt claude gemini deepseek mistral grok ollama openrouter"
+SUPPORTED_LLMS="chatgpt claude gemini deepseek mistral grok ollama openrouter groq"
 
 # Get the directory of the script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -129,12 +129,19 @@ call_api() {
   local data=$3
   local response_key=$4
 
-  # Build curl command with optional Authorization header
-  local curl_cmd=(curl -s -X POST "$url" -H "Content-Type: application/json")
-  if [ -n "$key" ]; then
+  # Build curl command
+  local curl_cmd=(curl -s -X POST -H "Content-Type: application/json")
+
+  # Handle authentication based on provider
+  if [ "$LLM" = "gemini" ]; then
+    # Gemini uses API key as query parameter
+    url="${url}?key=${key}"
+  elif [ -n "$key" ]; then
+    # Other providers use Bearer token
     curl_cmd+=(-H "Authorization: Bearer $key")
   fi
-  curl_cmd+=(-d "$data")
+
+  curl_cmd+=("$url" -d "$data")
 
   RESPONSE=$("${curl_cmd[@]}")
   if [ $? -ne 0 ]; then
@@ -167,7 +174,7 @@ case "$LLM" in
     call_api "$CHATGPT_API_URL" "$OPENAI_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
-    "grok")
+  "grok")
     check_var "$XAI_KEY" "XAI_KEY"
     check_var "$GROK_MAX_TOKENS" "GROK_MAX_TOKENS"
     check_var "$GROK_API_URL" "GROK_API_URL"
@@ -210,12 +217,23 @@ case "$LLM" in
     check_var "$GEMINI_KEY" "GEMINI_KEY"
     check_var "$GEMINI_MAX_TOKENS" "GEMINI_MAX_TOKENS"
     check_var "$GEMINI_API_URL" "GEMINI_API_URL"
+    # Construct the URL dynamically with the model
+    GEMINI_API_URL="https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent"
     EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$GEMINI_MAX_TOKENS}"
     DATA=$(jq -n \
-      --arg prompt "$PROMPT" \
+      --arg content "$PROMPT" \
       --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"prompt": $prompt, "max_tokens": $max_tokens}')
-    call_api "$GEMINI_API_URL" "$GEMINI_KEY" "$DATA" '.generated_text'
+      '{
+        "contents": [{
+          "role": "user",
+          "parts": [{"text": $content}]
+        }],
+        "generationConfig": {
+          "maxOutputTokens": $max_tokens,
+          "responseMimeType": "text/plain"
+        }
+      }')
+    call_api "$GEMINI_API_URL" "$GEMINI_KEY" "$DATA" '.[0].candidates[0].content.parts[0].text'
     ;;
 
   "mistral")
@@ -232,7 +250,6 @@ case "$LLM" in
     ;;
 
   "ollama")
-    # OLLAMA_KEY is optional; only check if set
     check_var "$OLLAMA_MAX_TOKENS" "OLLAMA_MAX_TOKENS"
     check_var "$OLLAMA_API_URL" "OLLAMA_API_URL"
     EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$OLLAMA_MAX_TOKENS}"
@@ -241,7 +258,6 @@ case "$LLM" in
       --arg prompt "$PROMPT" \
       --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
       '{"model": $model, "prompt": $prompt, "max_tokens": $max_tokens, "stream": false}')
-    # Pass OLLAMA_KEY if set, otherwise omit Authorization header
     if [ -n "$OLLAMA_KEY" ]; then
       call_api "$OLLAMA_API_URL" "$OLLAMA_KEY" "$DATA" '.response'
     else
@@ -260,5 +276,18 @@ case "$LLM" in
       --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
       '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
     call_api "$OPENROUTER_API_URL" "$OPENROUTER_KEY" "$DATA" '.choices[0].message.content'
+    ;;
+
+  "groq")
+    check_var "$GROQ_KEY" "GROQ_KEY"
+    check_var "$GROQ_MAX_TOKENS" "GROQ_MAX_TOKENS"
+    check_var "$GROQ_API_URL" "GROQ_API_URL"
+    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$GROQ_MAX_TOKENS}"
+    DATA=$(jq -n \
+      --arg model "$MODEL" \
+      --arg content "$PROMPT" \
+      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
+      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+    call_api "$GROQ_API_URL" "$GROQ_KEY" "$DATA" '.choices[0].message.content'
     ;;
 esac
