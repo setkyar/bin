@@ -13,7 +13,7 @@ ENV_FILE="$SCRIPT_DIR/llm.env"
 if [ -f "$ENV_FILE" ]; then
   source "$ENV_FILE"
 else
-  echo "Error: $ENV_FILE not found in $SCRIPT_DIR. Please create it with API keys, API URLs, max_tokens, DEFAULT_LLM, and DEFAULT_MODEL." >&2
+  echo "Error: $ENV_FILE not found in $SCRIPT_DIR. Please create it with API keys, API URLs, DEFAULT_LLM, and DEFAULT_MODEL." >&2
   exit 1
 fi
 
@@ -34,23 +34,13 @@ validate_llm() {
   fi
 }
 
-# Function to validate max_tokens
-validate_max_tokens() {
-  local tokens=$1
-  if ! [[ "$tokens" =~ ^[0-9]+$ ]] || [ "$tokens" -le 0 ]; then
-    echo "Error: max_tokens must be a positive integer, got '$tokens'." >&2
-    exit 1
-  fi
-}
-
 # Function to show usage
 usage() {
-  echo "Usage: $0 [-l=<llm>] [-m=<model>] [-t=<max_tokens>] [<prompt>]" >&2
-  echo "       cat file.txt | $0 [-l=<llm>] [-m=<model>] [-t=<max_tokens>] [<instructions>]" >&2
+  echo "Usage: $0 [-l=<llm>] [-m=<model>] [<prompt>]" >&2
+  echo "       cat file.txt | $0 [-l=<llm>] [-m=<model>] [<instructions>]" >&2
   echo "Options:" >&2
   echo "  -l=<llm>        Specify the LLM provider (e.g., chatgpt, ollama). Default: DEFAULT_LLM from $ENV_FILE" >&2
   echo "  -m=<model>      Specify the model variant (e.g., gpt-3.5-turbo, llama3). Default: DEFAULT_MODEL from $ENV_FILE" >&2
-  echo "  -t=<max_tokens> Specify the max tokens (e.g., 100). Default: Provider-specific from $ENV_FILE" >&2
   echo "Supported LLM providers: $SUPPORTED_LLMS" >&2
   echo "If no prompt or stdin is provided, an error is shown." >&2
 }
@@ -58,7 +48,6 @@ usage() {
 # Parse flags manually
 LLM=""
 MODEL=""
-MAX_TOKENS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -l=*)
@@ -68,11 +57,6 @@ while [ $# -gt 0 ]; do
       ;;
     -m=*)
       MODEL="${1#-m=}"
-      shift
-      ;;
-    -t=*)
-      MAX_TOKENS="${1#-t=}"
-      validate_max_tokens "$MAX_TOKENS"
       shift
       ;;
     *)
@@ -163,73 +147,57 @@ call_api() {
 case "$LLM" in
   "chatgpt")
     check_var "$OPENAI_KEY" "OPENAI_KEY"
-    check_var "$CHATGPT_MAX_TOKENS" "CHATGPT_MAX_TOKENS"
     check_var "$CHATGPT_API_URL" "CHATGPT_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$CHATGPT_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg model "$MODEL" \
       --arg content "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+      '{"model": $model, "messages": [{"role": "user", "content": $content}]}')
     call_api "$CHATGPT_API_URL" "$OPENAI_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
   "grok")
     check_var "$XAI_KEY" "XAI_KEY"
-    check_var "$GROK_MAX_TOKENS" "GROK_MAX_TOKENS"
     check_var "$GROK_API_URL" "GROK_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$GROK_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg model "$MODEL" \
       --arg content "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+      '{"model": $model, "messages": [{"role": "user", "content": $content}]}')
     call_api "$GROK_API_URL" "$XAI_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
   "deepseek")
     check_var "$DEEPSEEK_KEY" "DEEPSEEK_KEY"
-    check_var "$DEEPSEEK_MAX_TOKENS" "DEEPSEEK_MAX_TOKENS"
     check_var "$DEEPSEEK_API_URL" "DEEPSEEK_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$DEEPSEEK_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg model "$MODEL" \
       --arg content "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+      '{"model": $model, "messages": [{"role": "user", "content": $content}]}')
     call_api "$DEEPSEEK_API_URL" "$DEEPSEEK_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
   "claude")
     check_var "$ANTHROPIC_KEY" "ANTHROPIC_KEY"
-    check_var "$CLAUDE_MAX_TOKENS" "CLAUDE_MAX_TOKENS"
     check_var "$CLAUDE_API_URL" "CLAUDE_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$CLAUDE_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg model "$MODEL" \
       --arg content "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+      '{"model": $model, "messages": [{"role": "user", "content": $content}]}')
     call_api "$CLAUDE_API_URL" "$ANTHROPIC_KEY" "$DATA" '.content[0].text'
     ;;
 
   "gemini")
     check_var "$GEMINI_KEY" "GEMINI_KEY"
-    check_var "$GEMINI_MAX_TOKENS" "GEMINI_MAX_TOKENS"
     check_var "$GEMINI_API_URL" "GEMINI_API_URL"
     # Construct the URL dynamically with the model
     GEMINI_API_URL="https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$GEMINI_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg content "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
       '{
         "contents": [{
           "role": "user",
           "parts": [{"text": $content}]
         }],
         "generationConfig": {
-          "maxOutputTokens": $max_tokens,
           "responseMimeType": "text/plain"
         }
       }')
@@ -238,26 +206,20 @@ case "$LLM" in
 
   "mistral")
     check_var "$MISTRAL_KEY" "MISTRAL_KEY"
-    check_var "$MISTRAL_MAX_TOKENS" "MISTRAL_MAX_TOKENS"
     check_var "$MISTRAL_API_URL" "MISTRAL_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$MISTRAL_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg model "$MODEL" \
       --arg content "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+      '{"model": $model, "messages": [{"role": "user", "content": $content}]}')
     call_api "$MISTRAL_API_URL" "$MISTRAL_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
   "ollama")
-    check_var "$OLLAMA_MAX_TOKENS" "OLLAMA_MAX_TOKENS"
     check_var "$OLLAMA_API_URL" "OLLAMA_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$OLLAMA_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg model "$MODEL" \
       --arg prompt "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"model": $model, "prompt": $prompt, "max_tokens": $max_tokens, "stream": false}')
+      '{"model": $model, "prompt": $prompt, "stream": false}')
     if [ -n "$OLLAMA_KEY" ]; then
       call_api "$OLLAMA_API_URL" "$OLLAMA_KEY" "$DATA" '.response'
     else
@@ -267,27 +229,21 @@ case "$LLM" in
 
   "openrouter")
     check_var "$OPENROUTER_KEY" "OPENROUTER_KEY"
-    check_var "$OPENROUTER_MAX_TOKENS" "OPENROUTER_MAX_TOKENS"
     check_var "$OPENROUTER_API_URL" "OPENROUTER_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$OPENROUTER_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg model "$MODEL" \
       --arg content "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+      '{"model": $model, "messages": [{"role": "user", "content": $content}]}')
     call_api "$OPENROUTER_API_URL" "$OPENROUTER_KEY" "$DATA" '.choices[0].message.content'
     ;;
 
   "groq")
     check_var "$GROQ_KEY" "GROQ_KEY"
-    check_var "$GROQ_MAX_TOKENS" "GROQ_MAX_TOKENS"
     check_var "$GROQ_API_URL" "GROQ_API_URL"
-    EFFECTIVE_MAX_TOKENS="${MAX_TOKENS:-$GROQ_MAX_TOKENS}"
     DATA=$(jq -n \
       --arg model "$MODEL" \
       --arg content "$PROMPT" \
-      --argjson max_tokens "$EFFECTIVE_MAX_TOKENS" \
-      '{"model": $model, "messages": [{"role": "user", "content": $content}], "max_tokens": $max_tokens}')
+      '{"model": $model, "messages": [{"role": "user", "content": $content}]}')
     call_api "$GROQ_API_URL" "$GROQ_KEY" "$DATA" '.choices[0].message.content'
     ;;
 esac
